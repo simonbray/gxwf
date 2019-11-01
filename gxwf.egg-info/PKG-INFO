@@ -1,0 +1,20 @@
+Metadata-Version: 1.2
+Name: gxwf
+Version: 0.0.1
+Summary: CLI tool for running Galaxy workflows
+Home-page: https://github.com/simonbray/gxwf
+Author: Simon Bray
+Author-email: sbray@informatik.uni-freiburg.de
+License: MIT
+Download-URL: https://github.com/simonbray/gxwf/archive/0.0.1.tar.gz
+Description: gxwf
+        
+        CLI tool for running Galaxy workflows
+        
+Platform: UNKNOWN
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development :: Libraries
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3.6
+Requires-Python: >=0.0.1

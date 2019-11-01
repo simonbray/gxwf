@@ -1,0 +1,4 @@
+
+    [console_scripts]
+    gxwf=gxwf.cli:cli
+    

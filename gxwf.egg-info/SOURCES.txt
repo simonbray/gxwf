@@ -1,0 +1,13 @@
+MANIFEST.in
+README.rst
+setup.cfg
+setup.py
+gxwf/__init__.py
+gxwf/cli.py
+gxwf/version.py
+gxwf.egg-info/PKG-INFO
+gxwf.egg-info/SOURCES.txt
+gxwf.egg-info/dependency_links.txt
+gxwf.egg-info/entry_points.txt
+gxwf.egg-info/requires.txt
+gxwf.egg-info/top_level.txt

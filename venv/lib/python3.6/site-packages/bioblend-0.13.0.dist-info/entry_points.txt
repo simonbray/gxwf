@@ -1,0 +1,3 @@
+[console_scripts]
+bioblend-galaxy-tests = bioblend._tests.pytest_galaxy_test_wrapper:main [testing]
+
