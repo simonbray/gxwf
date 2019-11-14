@@ -161,10 +161,11 @@ def invoke(id, history, save_yaml, run_yaml):
     click.echo('_______________________________________________________________\n')
     hist = gi.histories.create_history(history)     
     if not run_yaml:
-        hist = gi.histories.create_history(history) 
+        # hist = gi.histories.create_history(history) 
         inputs_dict = {'params': {}, 'inputs': {}}
         click.echo(click.style("Enter inputs:", bold=True))
         for inp in wf['inputs']:
+            print(inp, wf['inputs'][inp]['label'])
             inp_val = click.prompt("Input {}: ".format(inp) + click.style("{}".format(wf['inputs'][inp]['label']), bold=True))
             if os.path.exists(inp_val):
                 # use local files or datasets?
@@ -185,5 +186,30 @@ def invoke(id, history, save_yaml, run_yaml):
             inputs_dict = yaml.load(f, Loader=SafeLoader)
 
     click.echo(click.style("Invoking workflow...", bold=True))
-    gi.workflows.invoke_workflow(id, inputs=inputs_dict['inputs'], params=inputs_dict['params'], history_id=hist)
+    print(id, inputs_dict['inputs'], inputs_dict['params'], hist)
+    inv = gi.workflows.invoke_workflow(id, inputs=inputs_dict['inputs'], params=inputs_dict['params'], history_id=hist['id'])
     
+    # wip ...
+
+
+
+@cli.command()
+@click.option("--id", default=False, help="Workflow ID invoked")
+@click.option("--history", default='gxwf_history', help="Name to give history in which workflow will be executed.")
+@click.option("--save-yaml", default=False, help="Save inputs as YAML, or perform a dry-run.")
+@click.option("--run-yaml", default=False, help="Run from inputs previously saved as YAML.")
+def running(id, history, save_yaml, run_yaml):
+    gi = _login()
+    if id:
+        invocations = gi.workflows.get_invocations(id)
+        for n in range(len(invocations)):
+            # print("Invocation {}".format(n+1))
+            click.echo(click.style("Invocation {}".format(n+1), bold=True))
+            invoc_id =  invocations[n]['id']
+            hist_id = gi.workflows.show_invocation(id, invoc_id)['history_id']
+            print(hist_id)
+            print(gi.histories.show_history(hist_id))
+
+    else:
+        print(':(')
+        # search all workflows ...
