@@ -20,6 +20,8 @@ can be used as a handy facility for running the task from a command line.
 import logging
 import click
 import os
+import time
+from tqdm import tqdm
 import yaml
 
 from yaml import SafeLoader
@@ -53,6 +55,15 @@ class Info(object):
         self.verbose: int = 0
 
 
+class GxwfInvocation(object):
+    def __init__(self, gi, invoc_id):
+        self.invoc_id = invoc_id
+        self.gi = gi
+    
+    def __iter__(self):
+        self.summary = self.gi.invocations.get_invocation_summary(self.invoc_id)
+        return self.summary['states'].get('ok', 0) / sum(self.summary['states'].values())
+
 # pass_info is a decorator for functions that pass 'Info' objects.
 #: pylint: disable=invalid-name
 pass_info = click.make_pass_decorator(Info, ensure=True)
@@ -84,13 +95,13 @@ def cli(info: Info, verbose: int):
     info.verbose = verbose
 
 
-@cli.command()
-@pass_info
-def hello(_: Info):
-    """
-    Say 'hello' to the nice people.
-    """
-    click.echo(f"gxwf says 'hello'")
+# @cli.command()
+# @pass_info
+# def hello(_: Info):
+#     """
+#     Say 'hello' to the nice people.
+#     """
+#     click.echo(f"gxwf says 'hello'")
 
 
 @cli.command()
@@ -143,7 +154,6 @@ def list(public, search):
 @click.option("--history", default='gxwf_history', help="Name to give history in which workflow will be executed.")
 @click.option("--save-yaml", default=False, help="Save inputs as YAML, or perform a dry-run.")
 @click.option("--run-yaml", default=False, help="Run from inputs previously saved as YAML.")
-
 def invoke(id, history, save_yaml, run_yaml):
     gi = _login()
     wf = gi.workflows.show_workflow(id)
@@ -206,9 +216,30 @@ def running(id, history, save_yaml, run_yaml):
             # print("Invocation {}".format(n+1))
             click.echo(click.style("Invocation {}".format(n+1), bold=True))
             invoc_id =  invocations[n]['id']
-            hist_id = gi.workflows.show_invocation(id, invoc_id)['history_id']
-            print(hist_id)
-            print(gi.histories.show_history(hist_id))
+            # hist_id = gi.workflows.show_invocation(id, invoc_id)['history_id']
+            # print(invoc_id)
+            # print(gi.histories.show_history(hist_id))
+            # print(gi.invocations.get_invocation_summary(invoc_id))
+            # print(gi.invocations.get_invocation_report(invoc_id))
+            
+            step_no = 1
+            state_colors = {'ok': 'green', 'running': 'yellow', 'error': 'red', 'paused': 'blue', 'deleted': 'magenta', 'deleted_new': 'magenta'}
+            for state in state_colors:
+                for k in range(gi.invocations.get_invocation_summary(invoc_id)['states'].get(state, 0)):
+                    click.echo(click.style(u'\u2B24' + ' Job {} ({})'.format(k+step_no, state), fg=state_colors[state]))
+                    step_no += k + 1
+
+
+            # for k in range(gi.invocations.get_invocation_summary(invoc_id)['states'].get('ok', 0)):
+            #     click.echo(click.style(u'\u2B24' + ' Job {}'.format(k+step_no), fg='green'))
+            # for k in range(gi.invocations.get_invocation_summary(invoc_id)['states'].get('running', 0)):
+            #     click.echo(click.style(u'\u2B24', fg='yellow'))
+            # for k in range(gi.invocations.get_invocation_summary(invoc_id)['states'].get('errored', 0)):
+            #     click.echo(click.style(u'\u2B24', fg='red'))
+            
+                #  Job {}  '.format(k+step_no), bg='green', fg='black'))
+            
+            # click.progressbar()
 
     else:
         print(':(')
