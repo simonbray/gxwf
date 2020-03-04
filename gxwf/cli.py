@@ -41,10 +41,16 @@ LOGGING_LEVELS = {
 CONFIG_PATH = os.path.expanduser("~/.gxwf")
 
 def _login():
-    with open(CONFIG_PATH) as f: 
-        cnfg = yaml.safe_load(f) 
-        gi = galaxy.GalaxyInstance(cnfg['url'], cnfg['api_key'])
-    return gi
+    try:
+        with open(CONFIG_PATH) as f: 
+            cnfg = yaml.safe_load(f) 
+            gi = galaxy.GalaxyInstance(cnfg['url'], cnfg['api_key'])
+            gi.histories.get_histories()  # just to check the connection
+        return gi, cnfg
+    except FileNotFoundError:
+        print("No login details provided - please run gxwf init")
+    except ConnectionError:
+        print("Could not connect - check login details are correct.")
 
 class Info(object):
     """
@@ -124,13 +130,15 @@ def init(url, api_key):
             return 0
     try:
         gi = galaxy.GalaxyInstance(url, api_key)
-    except Exception as e:
+        hid = gi.histories.create_history(name='GXWF datasets')['id']
+    except ConnectionError as e:
         click.echo("Accessing server failed with '{}'".format(e))
     else:
         with open(CONFIG_PATH, "w+") as f:
             f.write(
 """url: {}
-api_key: {}""".format(url, api_key))
+api_key: {}
+hid: {}""".format(url, api_key, hid))
     # print(url, api_key)
     click.echo(click.style(f"{__version__}", bold=True))
 
@@ -139,11 +147,14 @@ api_key: {}""".format(url, api_key))
 @click.option("--public/--private", default=False, help="List all public workflows or only user-created?.")
 @click.option("--search", '-s', default=False, help="Filter workflows by a string.")
 def list(public, search):
-    gi = _login()
+    gi, cnfg = _login()
     if search:
         workflows = [wf for wf in gi.workflows.get_workflows(published=public) if search in wf['name'] or search in wf['owner']] 
     else:
         workflows = gi.workflows.get_workflows(published=public)
+    print(workflows)
+
+
     click.echo(click.style("{:>100}{:>30}{:>10}{:>20}".format('Workflow name', 'ID', 'Steps', 'Owner'), bold=True))
     for wf in workflows:
         click.echo("{:>100}{:>30}{:>10}{:>20}".format(wf['name'], wf['id'], wf['number_of_steps'], wf['owner']))
@@ -155,7 +166,7 @@ def list(public, search):
 @click.option("--save-yaml", default=False, help="Save inputs as YAML, or perform a dry-run.")
 @click.option("--run-yaml", default=False, help="Run from inputs previously saved as YAML.")
 def invoke(id, history, save_yaml, run_yaml):
-    gi = _login()
+    gi, cnfg = _login()
     wf = gi.workflows.show_workflow(id)
     click.echo(click.style("Workflow selected: ", bold=True) + wf['name'])
     # click.echo(click.style("Steps:\n\t", bold=True))
@@ -209,7 +220,7 @@ def invoke(id, history, save_yaml, run_yaml):
 @click.option("--save-yaml", default=False, help="Save inputs as YAML, or perform a dry-run.")
 @click.option("--run-yaml", default=False, help="Run from inputs previously saved as YAML.")
 def running(id, history, save_yaml, run_yaml):
-    gi = _login()
+    gi, cnfg = _login()
     if id:
         invocations = gi.workflows.get_invocations(id)
         for n in range(len(invocations)):
