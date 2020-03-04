@@ -21,7 +21,7 @@ import logging
 import click
 import os
 import time
-from tqdm import tqdm
+# from tqdm import tqdm
 import yaml
 
 from yaml import SafeLoader
@@ -152,7 +152,6 @@ def list(public, search):
         workflows = [wf for wf in gi.workflows.get_workflows(published=public) if search in wf['name'] or search in wf['owner']] 
     else:
         workflows = gi.workflows.get_workflows(published=public)
-    print(workflows)
 
 
     click.echo(click.style("{:>100}{:>30}{:>10}{:>20}".format('Workflow name', 'ID', 'Steps', 'Owner'), bold=True))
@@ -255,3 +254,20 @@ def running(id, history, save_yaml, run_yaml):
     else:
         print(':(')
         # search all workflows ...
+
+
+@cli.command()
+@click.option("--upload", default=False, help="List all public workflows or only user-created?.")
+@click.option("--search", '-s', default=False, help="Filter workflows by a string.")
+def datasets(upload, search):
+    gi, cnfg = _login()
+    # if search:
+    #     workflows = [wf for wf in gi.workflows.get_workflows(published=public) if search in wf['name'] or search in wf['owner']] 
+    # else:
+    #     workflows = gi.workflows.get_workflows(published=public)
+
+    print(gi.histories.show_history(cnfg['hid'], contents=True))
+
+    # click.echo(click.style("{:>100}{:>30}{:>10}{:>20}".format('Workflow name', 'ID', 'Steps', 'Owner'), bold=True))
+    # for wf in workflows:
+    #     click.echo("{:>100}{:>30}{:>10}{:>20}".format(wf['name'], wf['id'], wf['number_of_steps'], wf['owner']))
