@@ -43,8 +43,9 @@ CONFIG_PATH = os.path.expanduser("~/.gxwf")
 def _login():
     try:
         with open(CONFIG_PATH) as f: 
-            cnfg = yaml.safe_load(f) 
-        gi = galaxy.GalaxyInstance(cnfg['url'], cnfg['api_key'])
+            cnfg = yaml.safe_load(f)
+        login = cnfg['logins'][cnfg['active_login']]
+        gi = galaxy.GalaxyInstance(login['url'], login['api_key'])
         gi.histories.get_histories()  # just to check the connection
         return gi, cnfg
     except FileNotFoundError:
@@ -151,34 +152,64 @@ def version():
     click.echo(click.style(f"{__version__}", bold=True))
 
 @cli.command()
-@click.option("--url", help="URL of Galaxy server.")
+@click.option("--url", help="URL of Galaxy server")
 @click.option("--api-key", help="API key")
-def init(url, api_key):
+@click.option("--name", help="Provide a handy name to refer to a login")
+@click.option("--switch", default=False, help="Switch to a different login")
+@click.option("--delete", default=False, help="Delete a login")
+@click.option("--view", is_flag=True, help="View all logins")
+def init(url, api_key, name, switch, delete, view):
     """
     Log into a Galaxy server.
     """
-    if os.path.exists(CONFIG_PATH):
-        overwrite = click.prompt("Your login credentials are already saved here: {}. Do you want to overwrite? [y/n]".format(CONFIG_PATH))
-        if overwrite not in ['Y', 'y']:
-            return 0
+
     try:
-        gi = galaxy.GalaxyInstance(url=url, key=api_key)
-        gi.histories.create_history(name='test')['id']
-        # print(gi.histories.create_history(name='GXWF datasets'))
-        hid = gi.histories.create_history(name='GXWF datasets')['id']
-        gi.histories.create_history_tag(hid, 'gxwf')
+        with open(CONFIG_PATH, "r") as f:
+            login_dict = yaml.load(f.read(), Loader=SafeLoader)
+    except FileNotFoundError:
+        login_dict = {'active_login': None, 'logins': {}}
 
-    except ConnectionError as e:
-        click.echo("Accessing server failed with '{}'".format(e))
+    if view:
+        login_name, login_url, login_api, login_hid = ['Login name'], ['URL'], ['API key'], ['History ID']
+
+        for lgn in login_dict['logins']:
+            login_name.append(lgn)
+            login_url.append(login_dict['logins'][lgn]['url'])
+            login_api.append(login_dict['logins'][lgn]['api_key'])
+            login_hid.append(login_dict['logins'][lgn]['hid'])
+
+        click.echo("You are currently using active login: " + click.style(login_dict['active_login'], bold=True))
+        _tabulate([login_name, login_url, login_api, login_hid])
+
+    elif switch:
+        if switch in login_dict['logins']:
+            login_dict['active_login'] = switch
+        else:
+            click.echo('Sorry, no login is recorded under the name {}.'.format(switch))
+    elif delete:
+        if login_dict['active_login'] == delete:
+            click.echo('Sorry, {} is the active login and cannot be deleted. Please activate a different login first.'.format(delete))
+        else:
+            try:
+                del login_dict['logins'][delete]
+            except KeyError:
+                click.echo('Sorry, no login is recorded under the name {}.'.format(delete))
+    elif name in login_dict['logins']:
+        click.echo('A login is already saved under the name {}; pick another.'.format(name))
     else:
-        with open(CONFIG_PATH, "w+") as f:
-            f.write(
-"""url: {}
-api_key: {}
-hid: {}""".format(url, api_key, hid))
-    # print(url, api_key)
-    click.echo(click.style(f"{__version__}", bold=True))
-
+        try:
+            gi = galaxy.GalaxyInstance(url=url, key=api_key)
+            hid = gi.histories.create_history(name='GXWF datasets')['id']
+            gi.histories.create_history_tag(hid, 'gxwf')
+        except ConnectionError as e:
+            click.echo("Accessing server failed with '{}'".format(e))
+        else:
+            login_dict['logins'][name] = {'url': url, 'api_key': api_key, 'hid': hid}
+            login_dict['active_login'] = name  # automatically switch to the new login
+    
+    with open(CONFIG_PATH, "w") as f:
+        f.write(yaml.dump(login_dict, Dumper=yaml.SafeDumper))
+    
 
 @cli.command()
 @click.option("--public/--private", default=False, help="List all public workflows or only user-created?.")
@@ -252,8 +283,11 @@ def invoke(id, history, save_yaml, run_yaml):
     # print(id, inputs_dict['inputs'], inputs_dict['params'], hist)
     hid = gi.histories.create_history(history)['id']
     gi.histories.create_history_tag(hid, 'gxwf')
-    inv = gi.workflows.invoke_workflow(id, inputs=inputs_dict['inputs'], params=inputs_dict['params'], history_id=hid)
-    
+    try:
+        inv = gi.workflows.invoke_workflow(id, inputs=inputs_dict['inputs'], params=inputs_dict['params'], history_id=hid)
+    except ConnectionError:
+        click.echo('Invocation failed due to a ConnectionError.')
+        gi.histories.delete_history(hid, purge=True)  # tidy up our mess
 
 
 @cli.command()
@@ -272,7 +306,7 @@ def running(id, history, save_yaml, run_yaml):
 
     for n in range(len(invocations)):
         click.echo(click.style("Invocation {}".format(n+1), bold=True))
-        invoc_id =  invocations[n]['id']
+        invoc_id = invocations[n]['id']
 
         step_no = 1
         state_colors = {'ok': 'green', 'running': 'yellow', 'error': 'red', 'paused': 'cyan', 'deleted': 'magenta', 'deleted_new': 'magenta', 'new': 'cyan', 'queued': 'yellow'}
