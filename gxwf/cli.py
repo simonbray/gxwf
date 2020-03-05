@@ -59,12 +59,16 @@ def _tabulate(values):
 
     values is a list of lists, each list a column
     """
+    col_widths = [len(max(col, key=len)) + 2 for col in values]
+
+    if len(values[0]) <= 1:
+        print("No results found.")
+        return 0
+
     try:
         width = os.get_terminal_size(0)[0]  # get terminal width
     except OSError:
         width = 80  # default
-
-    col_widths = [len(max(col, key=len)) + 2 for col in values]
 
     if sum(col_widths) > width:  # check if the columns are too wide for terminal
         wide_col = col_widths.index(max(col_widths))  # for simplicity we only edit the widest col
@@ -161,8 +165,9 @@ def init(url, api_key):
         gi = galaxy.GalaxyInstance(url=url, key=api_key)
         gi.histories.create_history(name='test')['id']
         # print(gi.histories.create_history(name='GXWF datasets'))
-        # hid = gi.histories.create_history(name='GXWF datasets')['id']
-        #   gi.histories.create_history(name='test')['id']
+        hid = gi.histories.create_history(name='GXWF datasets')['id']
+        gi.histories.create_history_tag(hid, 'gxwf')
+
     except ConnectionError as e:
         click.echo("Accessing server failed with '{}'".format(e))
     else:
@@ -208,33 +213,30 @@ def list(public, search):
 def invoke(id, history, save_yaml, run_yaml):
     gi, cnfg = _login()
     wf = gi.workflows.show_workflow(id)
+
     click.echo(click.style("Workflow selected: ", bold=True) + wf['name'])
-    # click.echo(click.style("Steps:\n\t", bold=True))
-    # for step in wf['steps']:
-    #     # tool_id = wf['steps'][step]['tool_id'].split('/')[4] if wf['steps'][step]['tool_id'] else 'None'
-    #     # tool_version = 
-    #     click.echo("\t{:>5}{:>100}".format(step, str(wf['steps'][step]['tool_id'])))
     click.echo(click.style("Input steps:\n\t{:>5}{:>50}".format('Number', 'Name'), bold=True))
+
     for inp in wf['inputs']:
-        # tool_id = wf['steps'][step]['tool_id'].split('/')[4] if wf['steps'][step]['tool_id'] else 'None'
-        # tool_version = 
         click.echo("\t{:>5}{:>50}".format(inp, wf['inputs'][inp]['label']))
     click.echo('_______________________________________________________________\n')
-    hist = gi.histories.create_history(history)     
+    # hist = gi.histories.create_history(history)
+
+    # might be nice to show a list of available datasets
+    # click.echo(click.style("Datasets available", bold=True))
+    # datasets()
+
     if not run_yaml:
-        # hist = gi.histories.create_history(history) 
         inputs_dict = {'params': {}, 'inputs': {}}
-        click.echo(click.style("Enter inputs:", bold=True))
+        click.echo(click.style("Enter inputs (dataset id):", bold=True))
         for inp in wf['inputs']:
             print(inp, wf['inputs'][inp]['label'])
             inp_val = click.prompt("Input {}: ".format(inp) + click.style("{}".format(wf['inputs'][inp]['label']), bold=True))
-            if os.path.exists(inp_val):
-                # use local files or datasets?
-                dataset = gi.tools.upload_file(inp_val, hist['id'])
-                inputs_dict['inputs'][inp] =  {'id': dataset['outputs'][0]['id'], 'src': dataset['outputs'][0]['hda_ldda']}
-            else:
-                # should do a check that params are getting correct inputs, e.g. int -> int, text -> text etc
-                inputs_dict['params'][inp] = {'param': wf['inputs'][inp]['label'], 'value': inp_val}
+            try:
+                gi.datasets.show_dataset(inp_val)  # test if inp_val is a valid dataset id
+                inputs_dict['inputs'][inp] = {'src': gi.datasets.show_dataset(inp_val)['hda_ldda'], 'id': inp_val}
+            except ConnectionError:  # then we assume it is a param
+                 inputs_dict['inputs'][inp] = inp_val
 
         if save_yaml:
             with open(save_yaml, 'w') as f: 
@@ -247,11 +249,11 @@ def invoke(id, history, save_yaml, run_yaml):
             inputs_dict = yaml.load(f, Loader=SafeLoader)
 
     click.echo(click.style("Invoking workflow...", bold=True))
-    print(id, inputs_dict['inputs'], inputs_dict['params'], hist)
-    inv = gi.workflows.invoke_workflow(id, inputs=inputs_dict['inputs'], params=inputs_dict['params'], history_id=hist['id'])
+    # print(id, inputs_dict['inputs'], inputs_dict['params'], hist)
+    hid = gi.histories.create_history(history)['id']
+    gi.histories.create_history_tag(hid, 'gxwf')
+    inv = gi.workflows.invoke_workflow(id, inputs=inputs_dict['inputs'], params=inputs_dict['params'], history_id=hid)
     
-    # wip ...
-
 
 
 @cli.command()
@@ -263,52 +265,42 @@ def running(id, history, save_yaml, run_yaml):
     gi, cnfg = _login()
     if id:
         invocations = gi.workflows.get_invocations(id)
-        for n in range(len(invocations)):
-            # print("Invocation {}".format(n+1))
-            click.echo(click.style("Invocation {}".format(n+1), bold=True))
-            invoc_id =  invocations[n]['id']
-            # hist_id = gi.workflows.show_invocation(id, invoc_id)['history_id']
-            # print(invoc_id)
-            # print(gi.histories.show_history(hist_id))
-            # print(gi.invocations.get_invocation_summary(invoc_id))
-            # print(gi.invocations.get_invocation_report(invoc_id))
-            
-            step_no = 1
-            state_colors = {'ok': 'green', 'running': 'yellow', 'error': 'red', 'paused': 'blue', 'deleted': 'magenta', 'deleted_new': 'magenta'}
-            for state in state_colors:
-                for k in range(gi.invocations.get_invocation_summary(invoc_id)['states'].get(state, 0)):
-                    click.echo(click.style(u'\u2B24' + ' Job {} ({})'.format(k+step_no, state), fg=state_colors[state]))
-                    step_no += k + 1
+        # in the future: use invocations = gi.invocations.get_invocations(workflow_id=id)
 
+    else:  # get all invocations - whether this is actually useful or not I don't know, but you get to see a lot of pretty colours
+        invocations = gi.invocations.get_invocations()
 
-            # for k in range(gi.invocations.get_invocation_summary(invoc_id)['states'].get('ok', 0)):
-            #     click.echo(click.style(u'\u2B24' + ' Job {}'.format(k+step_no), fg='green'))
-            # for k in range(gi.invocations.get_invocation_summary(invoc_id)['states'].get('running', 0)):
-            #     click.echo(click.style(u'\u2B24', fg='yellow'))
-            # for k in range(gi.invocations.get_invocation_summary(invoc_id)['states'].get('errored', 0)):
-            #     click.echo(click.style(u'\u2B24', fg='red'))
-            
-                #  Job {}  '.format(k+step_no), bg='green', fg='black'))
-            
-            # click.progressbar()
+    for n in range(len(invocations)):
+        click.echo(click.style("Invocation {}".format(n+1), bold=True))
+        invoc_id =  invocations[n]['id']
 
-    else:
-        print(':(')
-        # search all workflows ...
+        step_no = 1
+        state_colors = {'ok': 'green', 'running': 'yellow', 'error': 'red', 'paused': 'cyan', 'deleted': 'magenta', 'deleted_new': 'magenta', 'new': 'cyan', 'queued': 'yellow'}
+        for state in state_colors:
+            for k in range(gi.invocations.get_invocation_summary(invoc_id)['states'].get(state, 0)):
+                click.echo(click.style(u'\u2B24' + ' Job {} ({})'.format(k+step_no, state), fg=state_colors[state]))
+                step_no += k + 1
 
 
 @cli.command()
-@click.option("--upload", default=False, help="List all public workflows or only user-created?.")
+@click.option("--upload", default=False, help="Upload a new dataset")
 @click.option("--search", '-s', default=False, help="Filter workflows by a string.")
 def datasets(upload, search):
+    print(upload, search)
     gi, cnfg = _login()
     # if search:
     #     workflows = [wf for wf in gi.workflows.get_workflows(published=public) if search in wf['name'] or search in wf['owner']] 
     # else:
     #     workflows = gi.workflows.get_workflows(published=public)
 
-    print(gi.histories.show_history(cnfg['hid'], contents=True))
+    gxwf_h = gi.histories.show_history(cnfg['hid'], contents=True)
 
-    # click.echo(click.style("{:>100}{:>30}{:>10}{:>20}".format('Workflow name', 'ID', 'Steps', 'Owner'), bold=True))
-    # for wf in workflows:
-    #     click.echo("{:>100}{:>30}{:>10}{:>20}".format(wf['name'], wf['id'], wf['number_of_steps'], wf['owner']))
+    ds_name, ds_id, ds_ext = ['Dataset name'], ['ID'], ['Extension']
+
+    for ds in gxwf_h:
+        if ds['deleted'] == False and ds['state'] == 'ok':
+            ds_name.append(ds['name'])
+            ds_id.append(ds['id'])
+            ds_ext.append(ds['extension'])
+
+    _tabulate([ds_name, ds_ext, ds_id])
