@@ -29,6 +29,7 @@ from yaml import SafeLoader
 from .__init__ import __version__
 
 from bioblend import galaxy
+from bioblend import ConnectionError as BioblendConnectionError
 
 LOGGING_LEVELS = {
     0: logging.NOTSET,
@@ -43,13 +44,13 @@ CONFIG_PATH = os.path.expanduser("~/.gxwf")
 def _login():
     try:
         with open(CONFIG_PATH) as f: 
-            cnfg = yaml.safe_load(f)
-        login = cnfg['logins'][cnfg['active_login']]
-        gi = galaxy.GalaxyInstance(login['url'], login['api_key'])
+            login_dict = yaml.safe_load(f)
+        cnfg = login_dict['logins'][login_dict['active_login']]
+        gi = galaxy.GalaxyInstance(cnfg['url'], cnfg['api_key'])
         gi.histories.get_histories()  # just to check the connection
         return gi, cnfg
     except FileNotFoundError:
-        print("No login details provided - please run gxwf init")
+        print("No login details provided - please run gxwf init.")
     except ConnectionError:
         print("Could not connect - check login details are correct.")
 
@@ -258,7 +259,7 @@ def invoke(id, history, save_yaml, run_yaml):
     # datasets()
 
     if not run_yaml:
-        inputs_dict = {'params': {}, 'inputs': {}}
+        inputs_dict = {'params': {}, 'inputs': {}}  # what is params actually used for? not clear from the docs
         click.echo(click.style("Enter inputs (dataset id):", bold=True))
         for inp in wf['inputs']:
             print(inp, wf['inputs'][inp]['label'])
@@ -266,11 +267,11 @@ def invoke(id, history, save_yaml, run_yaml):
             try:
                 gi.datasets.show_dataset(inp_val)  # test if inp_val is a valid dataset id
                 inputs_dict['inputs'][inp] = {'src': gi.datasets.show_dataset(inp_val)['hda_ldda'], 'id': inp_val}
-            except ConnectionError:  # then we assume it is a param
+            except BioblendConnectionError:  # then we assume it is a param
                  inputs_dict['inputs'][inp] = inp_val
 
         if save_yaml:
-            with open(save_yaml, 'w') as f: 
+            with open(save_yaml, 'w') as f:
                 f.write(yaml.dump(inputs_dict)) 
             cont = click.prompt("Continue to run workflow? [y/n]")
             if cont not in ['y', 'Y']:
@@ -285,8 +286,8 @@ def invoke(id, history, save_yaml, run_yaml):
     gi.histories.create_history_tag(hid, 'gxwf')
     try:
         inv = gi.workflows.invoke_workflow(id, inputs=inputs_dict['inputs'], params=inputs_dict['params'], history_id=hid)
-    except ConnectionError:
-        click.echo('Invocation failed due to a ConnectionError.')
+    except (ConnectionError, BioblendConnectionError):
+        click.echo('Invocation failed due to a ConnectionError. Check dataset IDs were specified correctly.')
         gi.histories.delete_history(hid, purge=True)  # tidy up our mess
 
 
@@ -298,8 +299,8 @@ def invoke(id, history, save_yaml, run_yaml):
 def running(id, history, save_yaml, run_yaml):
     gi, cnfg = _login()
     if id:
-        invocations = gi.workflows.get_invocations(id)
-        # in the future: use invocations = gi.invocations.get_invocations(workflow_id=id)
+        invocations = gi.workflows.get_invocations(id)  # will be deprecated, use line below in future
+        # invocations = gi.invocations.get_invocations(workflow_id=id)
 
     else:  # get all invocations - whether this is actually useful or not I don't know, but you get to see a lot of pretty colours
         invocations = gi.invocations.get_invocations()
