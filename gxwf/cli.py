@@ -24,6 +24,8 @@ import time
 # from tqdm import tqdm
 import yaml
 
+import namesgenerator  # for now install via pip
+
 from yaml import SafeLoader
 
 from .__init__ import __version__
@@ -41,19 +43,31 @@ LOGGING_LEVELS = {
 
 CONFIG_PATH = os.path.expanduser("~/.gxwf")
 
-def _login():
+def _read_configfile():
     try:
         with open(CONFIG_PATH) as f: 
-            login_dict = yaml.safe_load(f)
-        cnfg = login_dict['logins'][login_dict['active_login']]
-        gi = galaxy.GalaxyInstance(cnfg['url'], cnfg['api_key'])
-        gi.histories.get_histories()  # just to check the connection
-        return gi, cnfg
+            cnfg = yaml.safe_load(f)
+        return cnfg
     except FileNotFoundError:
         print("No login details provided - please run gxwf init.")
     except ConnectionError:
         print("Could not connect - check login details are correct.")
 
+def _write_to_file(yml, file_dest=CONFIG_PATH):
+    with open(file_dest, "w") as f:
+        f.write(yaml.dump(yml, Dumper=yaml.SafeDumper))
+
+def _alias_to_id(alias):
+    alias_dct = _read_configfile()['aliases']
+    return alias_dct.get(alias)
+
+def _login():
+    login_dict = _read_configfile()
+    cnfg = login_dict['logins'][login_dict['active_login']]
+    aliases = login_dict['aliases']
+    gi = galaxy.GalaxyInstance(cnfg['url'], cnfg['api_key'])
+    gi.histories.get_histories()  # just to check the connection
+    return gi, cnfg, aliases
 
 def _tabulate(values):
     """
@@ -168,7 +182,7 @@ def init(url, api_key, name, switch, delete, view):
         with open(CONFIG_PATH, "r") as f:
             login_dict = yaml.load(f.read(), Loader=SafeLoader)
     except FileNotFoundError:
-        login_dict = {'active_login': None, 'logins': {}}
+        login_dict = {'active_login': None, 'logins': {}, 'aliases': {}}
 
     if view:
         login_name, login_url, login_api, login_hid = ['Login name'], ['URL'], ['API key'], ['History ID']
@@ -208,15 +222,16 @@ def init(url, api_key, name, switch, delete, view):
             login_dict['logins'][name] = {'url': url, 'api_key': api_key, 'hid': hid}
             login_dict['active_login'] = name  # automatically switch to the new login
     
-    with open(CONFIG_PATH, "w") as f:
-        f.write(yaml.dump(login_dict, Dumper=yaml.SafeDumper))
+    _write_to_file(login_dict)
+    # with open(CONFIG_PATH, "w") as f:
+    #     f.write(yaml.dump(login_dict, Dumper=yaml.SafeDumper))
     
 
 @cli.command()
 @click.option("--public/--private", default=False, help="List all public workflows or only user-created?.")
 @click.option("--search", '-s', default=False, help="Filter workflows by a string.")
 def list(public, search):
-    gi, cnfg = _login()
+    gi, cnfg, aliases = _login()
     if search:
         workflows = [wf for wf in gi.workflows.get_workflows(published=public) if search in wf['name'] or search in wf['owner']] 
     else:
@@ -243,7 +258,7 @@ def list(public, search):
 @click.option("--save-yaml", default=False, help="Save inputs as YAML, or perform a dry-run.")
 @click.option("--run-yaml", default=False, help="Run from inputs previously saved as YAML.")
 def invoke(id, history, save_yaml, run_yaml):
-    gi, cnfg = _login()
+    gi, cnfg, aliases = _login()
     wf = gi.workflows.show_workflow(id)
 
     click.echo(click.style("Workflow selected: ", bold=True) + wf['name'])
@@ -271,8 +286,9 @@ def invoke(id, history, save_yaml, run_yaml):
                  inputs_dict['inputs'][inp] = inp_val
 
         if save_yaml:
-            with open(save_yaml, 'w') as f:
-                f.write(yaml.dump(inputs_dict)) 
+            _write_to_file(inputs_dict, save_yaml)
+            # with open(save_yaml, 'w') as f:
+            #     f.write(yaml.dump(inputs_dict)) 
             cont = click.prompt("Continue to run workflow? [y/n]")
             if cont not in ['y', 'Y']:
                 return
@@ -297,7 +313,7 @@ def invoke(id, history, save_yaml, run_yaml):
 @click.option("--save-yaml", default=False, help="Save inputs as YAML, or perform a dry-run.")
 @click.option("--run-yaml", default=False, help="Run from inputs previously saved as YAML.")
 def running(id, history, save_yaml, run_yaml):
-    gi, cnfg = _login()
+    gi, cnfg, aliases = _login()
     if id:
         invocations = gi.workflows.get_invocations(id)  # will be deprecated, use line below in future
         # invocations = gi.invocations.get_invocations(workflow_id=id)
@@ -322,9 +338,10 @@ def running(id, history, save_yaml, run_yaml):
 @click.option("--search", '-s', default=False, help="Filter workflows by a string.")
 @click.option("--all", '-a', is_flag=True, help="Get all datasets - not only those in the GXWF history. Warning - may take a REALLY long time.")
 def datasets(upload, search, all):
-    gi, cnfg = _login()
+    gi, cnfg, aliases = _login()
 
     if all:
+        # replace all this rubbish with gi.datasets.get_datasets() when the PR is merged
         dataset_list = []
         for h in gi.histories.get_histories():
             h_name = gi.histories.show_history(h['id'])['name']
@@ -349,3 +366,30 @@ def datasets(upload, search, all):
             ds_hist.append(ds.get('history_name', ''))  # could hide this option when --all is not set
 
     _tabulate([ds_name, ds_ext, ds_id, ds_hist])
+
+
+@cli.command()
+@click.option("--alias", default=False, help="New alias to add")
+@click.option("--id", default=False, help="ID linked to the new alias")
+@click.option("--all", '-a', is_flag=True, help="Generate aliases for all (user-owned) workflows and all datasets in the GXWF history.")
+def alias(alias, id, all):
+    gi, cnfg, aliases = _login()
+    # print(aliases)
+    if all:
+        workflow_ids = [wf['id'] for wf in gi.workflows.get_workflows()]
+        dataset_ids = [ds['id'] for ds in gi.histories.show_history(cnfg['hid'], contents=True)]
+        for id in workflow_ids + dataset_ids:
+            if id not in aliases.values():  # we do not overwrite if an alias already exists
+                alias = namesgenerator.get_random_name()
+                click.echo("Alias assigned to ID {}: ".format(id) + click.style(alias, bold=True))
+                aliases[alias] = id
+    else:
+        if not alias:
+            alias = namesgenerator.get_random_name()
+        click.echo("Alias assigned to ID {}: ".format(id) + click.style(alias, bold=True))
+        aliases[alias] = id
+
+    f = _read_configfile()
+    f['aliases'] = aliases
+
+    _write_to_file(f)
