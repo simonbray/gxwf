@@ -323,17 +323,12 @@ def running(id, history, save_yaml, run_yaml):
 @click.option("--all", '-a', is_flag=True, help="Get all datasets - not only those in the GXWF history. Warning - may take a REALLY long time.")
 def datasets(upload, search, all):
     gi, cnfg = _login()
-    # if search:
-    #     workflows = [wf for wf in gi.workflows.get_workflows(published=public) if search in wf['name'] or search in wf['owner']] 
-    # else:
-    #     workflows = gi.workflows.get_workflows(published=public)
 
     if all:
         dataset_list = []
         for h in gi.histories.get_histories():
             h_name = gi.histories.show_history(h['id'])['name']
             history_list = gi.histories.show_history(h['id'], contents=True)
-            print(h_name)
             for dataset in history_list:
                 dataset['history_name'] = h_name
             dataset_list += history_list
@@ -344,13 +339,13 @@ def datasets(upload, search, all):
     ds_name, ds_id, ds_ext, ds_hist = ['Dataset name'], ['ID'], ['Extension'], ['History']
 
     for ds in dataset_list:
+        if search:
+            if search not in ds.get('name', ''):
+                continue
         if ds.get('deleted') == False and ds.get('state') == 'ok':
             ds_name.append(ds.get('name', ''))
             ds_id.append(ds.get('id', ''))
             ds_ext.append(str(ds.get('extension', '')))
             ds_hist.append(ds.get('history_name', ''))  # could hide this option when --all is not set
-
-        if None in [ds.get('name', ''), ds.get('id', ''), ds.get('extension', ''), ds.get('history_name', '')]:
-            print(ds)
 
     _tabulate([ds_name, ds_ext, ds_id, ds_hist])
