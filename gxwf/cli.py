@@ -263,7 +263,6 @@ def invoke(id, history, save_yaml, run_yaml):
     for inp in wf['inputs']:
         click.echo("\t{:>5}{:>50}".format(inp, wf['inputs'][inp]['label']))
     click.echo('_______________________________________________________________\n')
-    # hist = gi.histories.create_history(history)
 
     # might be nice to show a list of available datasets
     # click.echo(click.style("Datasets available", bold=True))
@@ -350,6 +349,9 @@ def datasets(upload, search, all):
 
     else:
         dataset_list = gi.histories.show_history(cnfg['hid'], contents=True)
+        for dataset in dataset_list:
+            if 'gxwf' not in dataset['tags']:
+                gi.histories.update_dataset(cnfg['hid'], dataset['id'], tags=['gxwf'])
 
     ds_name, ds_id, ds_alias, ds_ext, ds_hist = ['Dataset name'], ['ID'], ['Alias'], ['Extension'], ['History']
 
