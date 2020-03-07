@@ -57,10 +57,6 @@ def _write_to_file(yml, file_dest=CONFIG_PATH):
     with open(file_dest, "w") as f:
         f.write(yaml.dump(yml, Dumper=yaml.SafeDumper))
 
-def _alias_to_id(alias):
-    alias_dct = _read_configfile()['aliases']
-    return alias_dct.get(alias)
-
 def _login():
     login_dict = _read_configfile()
     cnfg = login_dict['logins'][login_dict['active_login']]
@@ -232,24 +228,23 @@ def init(url, api_key, name, switch, delete, view):
 @click.option("--search", '-s', default=False, help="Filter workflows by a string.")
 def list(public, search):
     gi, cnfg, aliases = _login()
+    aliases_inverted = {v: k for k, v in aliases.items()}  # need this below
     if search:
         workflows = [wf for wf in gi.workflows.get_workflows(published=public) if search in wf['name'] or search in wf['owner']] 
     else:
         workflows = gi.workflows.get_workflows(published=public)
 
-    wf_name, wf_id, steps, owner = ['Workflow name'], ['ID'], ['Steps'], ['Owner']
+    wf_name, wf_id, wf_alias, steps, owner = ['Workflow name'], ['ID'], ['Alias'], ['Steps'], ['Owner']
+    # do we need separate id / alias columns? if we make sure everything can be done via alias
 
     for wf in workflows:
         wf_name.append(wf['name'])
         wf_id.append(wf['id'])
+        wf_alias.append(aliases_inverted.get(wf['id']))
         steps.append(str(wf['number_of_steps']))
         owner.append(wf['owner'])
 
-    _tabulate([wf_name, wf_id, steps, owner])
-
-    # click.echo(click.style("{:>100}{:>30}{:>10}{:>20}".format('Workflow name', 'ID', 'Steps', 'Owner'), bold=True))
-    # for wf in workflows:
-    #     click.echo("{:>100}{:>30}{:>10}{:>20}".format(wf['name'], wf['id'], wf['number_of_steps'], wf['owner']))
+    _tabulate([wf_name, wf_id, wf_alias, steps, owner])
 
 
 @cli.command()
@@ -259,6 +254,7 @@ def list(public, search):
 @click.option("--run-yaml", default=False, help="Run from inputs previously saved as YAML.")
 def invoke(id, history, save_yaml, run_yaml):
     gi, cnfg, aliases = _login()
+    id = aliases.get(id, id)  # if the user provided an alias, return the id; else assume they provided a raw id
     wf = gi.workflows.show_workflow(id)
 
     click.echo(click.style("Workflow selected: ", bold=True) + wf['name'])
@@ -314,6 +310,7 @@ def invoke(id, history, save_yaml, run_yaml):
 @click.option("--run-yaml", default=False, help="Run from inputs previously saved as YAML.")
 def running(id, history, save_yaml, run_yaml):
     gi, cnfg, aliases = _login()
+    id = aliases.get(id, id)  # if the user provided an alias, return the id; else assume they provided a raw id
     if id:
         invocations = gi.workflows.get_invocations(id)  # will be deprecated, use line below in future
         # invocations = gi.invocations.get_invocations(workflow_id=id)
@@ -339,6 +336,7 @@ def running(id, history, save_yaml, run_yaml):
 @click.option("--all", '-a', is_flag=True, help="Get all datasets - not only those in the GXWF history. Warning - may take a REALLY long time.")
 def datasets(upload, search, all):
     gi, cnfg, aliases = _login()
+    aliases_inverted = {v: k for k, v in aliases.items()}  # need this below
 
     if all:
         # replace all this rubbish with gi.datasets.get_datasets() when the PR is merged
@@ -353,7 +351,7 @@ def datasets(upload, search, all):
     else:
         dataset_list = gi.histories.show_history(cnfg['hid'], contents=True)
 
-    ds_name, ds_id, ds_ext, ds_hist = ['Dataset name'], ['ID'], ['Extension'], ['History']
+    ds_name, ds_id, ds_alias, ds_ext, ds_hist = ['Dataset name'], ['ID'], ['Alias'], ['Extension'], ['History']
 
     for ds in dataset_list:
         if search:
@@ -362,10 +360,11 @@ def datasets(upload, search, all):
         if ds.get('deleted') == False and ds.get('state') == 'ok':
             ds_name.append(ds.get('name', ''))
             ds_id.append(ds.get('id', ''))
+            ds_alias.append(aliases_inverted.get(ds.get('id'), ''))
             ds_ext.append(str(ds.get('extension', '')))
             ds_hist.append(ds.get('history_name', ''))  # could hide this option when --all is not set
 
-    _tabulate([ds_name, ds_ext, ds_id, ds_hist])
+    _tabulate([ds_name, ds_ext, ds_id, ds_alias, ds_hist])
 
 
 @cli.command()
@@ -380,7 +379,11 @@ def alias(alias, id, all):
         dataset_ids = [ds['id'] for ds in gi.histories.show_history(cnfg['hid'], contents=True)]
         for id in workflow_ids + dataset_ids:
             if id not in aliases.values():  # we do not overwrite if an alias already exists
-                alias = namesgenerator.get_random_name()
+                while True:
+                    alias = namesgenerator.get_random_name()
+                    # we can allow one id to have multiple aliases but NOT the reverse
+                    if alias not in aliases:
+                        break
                 click.echo("Alias assigned to ID {}: ".format(id) + click.style(alias, bold=True))
                 aliases[alias] = id
     else:
