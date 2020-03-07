@@ -307,7 +307,7 @@ def invoke(id, history, save_yaml, run_yaml):
 @click.option("--history", default='gxwf_history', help="Name to give history in which workflow will be executed.")
 @click.option("--save-yaml", default=False, help="Save inputs as YAML, or perform a dry-run.")
 @click.option("--run-yaml", default=False, help="Run from inputs previously saved as YAML.")
-def running(id, history, save_yaml, run_yaml):
+def running(id, history, save_yaml, run_yaml):  # should perhaps rename this invocations, it also shows completed invs
     gi, cnfg, aliases = _login()
     id = aliases.get(id, id)  # if the user provided an alias, return the id; else assume they provided a raw id
     if id:
@@ -318,7 +318,7 @@ def running(id, history, save_yaml, run_yaml):
         invocations = gi.invocations.get_invocations()
 
     for n in range(len(invocations)):
-        click.echo(click.style("Invocation {}".format(n+1), bold=True))
+        click.echo(click.style("\nInvocation {}".format(n+1), bold=True))
         invoc_id = invocations[n]['id']
 
         step_no = 1
@@ -398,3 +398,27 @@ def alias(alias, id, all):
     f['aliases'] = aliases
 
     _write_to_file(f)
+
+@cli.command()
+def lint():
+    return
+
+@cli.command()
+def upload():
+    return
+
+@cli.command()
+@click.option("--id", default=False, help="Workflow ID.")
+@click.option("--number", '-n', default=False, type=int, help="Number (index) of the invocation.")  # Should this be done using an invocation ID / alias instead?
+@click.option("--output", '-o', default=False, help="Output for markdown report.")  # Should this be done using an invocation ID / alias instead?
+def report(id, number, output):
+    gi, cnfg, aliases = _login()
+    id = aliases.get(id, id)  # if the user provided an alias, return the id; else assume they provided a raw id
+    inv_id = gi.workflows.get_invocations(id)[number]['id']  # will be deprecated, use line below in future
+    # invocation = gi.invocations.get_invocations(workflow_id=id)[number]
+
+    md = gi.invocations.get_invocation_report(inv_id)['markdown']
+    with open(output, 'w') as f:
+        f.write(md)
+
+    # Another idea: add --report as an option to invoke subcommand?
