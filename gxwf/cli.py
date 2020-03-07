@@ -26,6 +26,7 @@ import yaml
 import json
 
 import namesgenerator  # for now install via pip
+import gxformat2
 
 from yaml import SafeLoader
 
@@ -402,6 +403,8 @@ def alias(alias, id, all):
 
 @cli.command()
 def lint():
+    from gxformat2.lint import lint_ga
+    # have a look at gxformat2
     return
 
 @cli.command()
