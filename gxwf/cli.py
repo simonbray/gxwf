@@ -23,6 +23,7 @@ import os
 import time
 # from tqdm import tqdm
 import yaml
+import json
 
 import namesgenerator  # for now install via pip
 
@@ -43,9 +44,9 @@ LOGGING_LEVELS = {
 
 CONFIG_PATH = os.path.expanduser("~/.gxwf")
 
-def _read_configfile():
+def _read_configfile(configfile=CONFIG_PATH):
     try:
-        with open(CONFIG_PATH) as f: 
+        with open(configfile) as f:
             cnfg = yaml.safe_load(f)
         return cnfg
     except FileNotFoundError:
@@ -240,7 +241,7 @@ def list(public, search):
     for wf in workflows:
         wf_name.append(wf['name'])
         wf_id.append(wf['id'])
-        wf_alias.append(aliases_inverted.get(wf['id']))
+        wf_alias.append(aliases_inverted.get(wf['id'], ''))
         steps.append(str(wf['number_of_steps']))
         owner.append(wf['owner'])
 
@@ -330,7 +331,7 @@ def running(id, history, save_yaml, run_yaml):  # should perhaps rename this inv
 
 
 @cli.command()
-@click.option("--upload", default=False, help="Upload a new dataset")
+# @click.option("--upload", default=False, help="Upload a new dataset")
 @click.option("--search", '-s', default=False, help="Filter workflows by a string.")
 @click.option("--all", '-a', is_flag=True, help="Get all datasets - not only those in the GXWF history. Warning - may take a REALLY long time.")
 def datasets(upload, search, all):
@@ -404,8 +405,25 @@ def lint():
     return
 
 @cli.command()
-def upload():
-    return
+@click.option("--path", default=False, help="Path to file to be uploaded.")
+@click.option("--public/--private", default=False, help="Upload as public or private? (only valid for workflows)")
+def upload(path, public):  # could call it import but doubt python will like that ...
+    gi, cnfg, aliases = _login()
+    # id = aliases.get(id, id)  # if the user provided an alias, return the id; else assume they provided a raw id
+
+    if path[-3:] == '.ga':  # decide based on ext whether to upload as wf or ds. is this sufficient?
+        with open(path) as f:
+            # quote from @bgruening: 'Only support the newer yaml based workflow files', don't know what this is though
+            # wf_dict = yaml.safe_load(f)
+            wf_dict = json.load(f)
+        wf_dict['tags'].append('gxwf')
+        gi.workflows.import_workflow_dict(wf_dict, publish=public)  # could use import_workflow_from_local_path, but then would need a second call to add the gxwf tag as below
+        # gi.workflows.update_workflow(wf['id'], tags=wf['tags'] + ['gxwf'])
+
+    else:
+        ds_id = gi.tools.upload_file(path, cnfg['hid'])['outputs'][0]['id']
+        gi.histories.update_dataset(cnfg['hid'], ds_id, tags=['gxwf'])
+
 
 @cli.command()
 @click.option("--id", default=False, help="Workflow ID.")
