@@ -51,7 +51,8 @@ setup(
         # Include dependencies here
         'click>=7.0,<8',
         'namesgenerator',
-        'gxformat2'
+        'gxformat2',
+        'bioblend'
     ],
     entry_points="""
     [console_scripts]
