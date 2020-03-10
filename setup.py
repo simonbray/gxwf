@@ -50,7 +50,8 @@ setup(
     install_requires=[
         # Include dependencies here
         'click>=7.0,<8',
-        'namesgenerator'
+        'namesgenerator',
+        'gxformat2'
     ],
     entry_points="""
     [console_scripts]
