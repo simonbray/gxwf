@@ -35,6 +35,8 @@ from .__init__ import __version__
 from bioblend import galaxy
 from bioblend import ConnectionError as BioblendConnectionError
 
+from requests import ConnectionError as RequestsConnectionError
+
 LOGGING_LEVELS = {
     0: logging.NOTSET,
     1: logging.ERROR,
@@ -173,14 +175,25 @@ def version():
 @click.option("--view", is_flag=True, help="View all logins")
 def init(url, api_key, name, switch, delete, view):
     """
-    Log into a Galaxy server.
+    Add or modify login details for a Galaxy server.
+
+    To add a new login, use --url, --api-key and --name.
+    To view existing logins, use --view.
+
+
     """
 
+    if not (url and api_key and name) and (url or api_key or name):
+        click.echo("Error: if a new login is added, --url, --name and --api-key all need to be specified.")
+        return
     try:
         with open(CONFIG_PATH, "r") as f:
             login_dict = yaml.load(f.read(), Loader=SafeLoader)
     except FileNotFoundError:
         login_dict = {'active_login': None, 'logins': {}, 'aliases': {}}
+        if view or switch or delete:
+            click.echo("No logins found.")
+            return
 
     if view:
         login_name, login_url, login_api, login_hid = ['Login name'], ['URL'], ['API key'], ['History ID']
@@ -214,7 +227,7 @@ def init(url, api_key, name, switch, delete, view):
             gi = galaxy.GalaxyInstance(url=url, key=api_key)
             hid = gi.histories.create_history(name='GXWF datasets')['id']
             gi.histories.create_history_tag(hid, 'gxwf')
-        except ConnectionError as e:
+        except (ConnectionError, RequestsConnectionError) as e:
             click.echo("Accessing server failed with '{}'".format(e))
         else:
             login_dict['logins'][name] = {'url': url, 'api_key': api_key, 'hid': hid}
