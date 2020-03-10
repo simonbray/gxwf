@@ -49,7 +49,10 @@ setup(
     version=version,
     install_requires=[
         # Include dependencies here
-        'click>=7.0,<8'
+        'click>=7.0,<8',
+        'namesgenerator',
+        'gxformat2',
+        'bioblend'
     ],
     entry_points="""
     [console_scripts]
