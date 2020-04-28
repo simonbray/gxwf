@@ -9,6 +9,7 @@ from .subcommands import datasets as dataset_commands
 from .subcommands import alias as alias_commands
 from .subcommands import invocations as invocation_commands
 from .subcommands import upload as upload_commands
+from .subcommands import edit as edit_commands
 
 from gxwf import utils
 
@@ -147,3 +148,11 @@ def invocations(id_):
     """
     return invocation_commands.invocations(id_)
 
+
+@cli.command()
+@click.argument("workflow_id")  #, help="Workflow ID to edit")
+def edit(workflow_id):
+    """
+    Open a chosen workflow (from its ID or alias) with the Galaxy workflow editor interface, in the user's default web browser.
+    """
+    return edit_commands.edit(workflow_id)
